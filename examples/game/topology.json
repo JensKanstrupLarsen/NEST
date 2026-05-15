@@ -1,0 +1,30 @@
+{
+    "hosts": {
+        "h1": {"ip": "10.0.1.1/24", "mac": "08:00:00:00:01:11",
+	       "commands":["route add default gw 10.0.1.10 dev eth0",
+                           "arp -i eth0 -s 10.0.1.10 08:00:00:00:01:00",
+			   "sudo tshark -V -f \"(tcp or udp) and dst net 10.0.1.1\" > examples/game/log/coordinator.packets &"]},
+        "h2": {"ip": "10.0.2.2/24", "mac": "08:00:00:00:02:22",
+	       "commands":["route add default gw 10.0.2.20 dev eth0",
+                          "arp -i eth0 -s 10.0.2.20 08:00:00:00:02:00",
+			   "sudo tshark -V -f \"(tcp or udp) and dst net 10.0.2.2\" > examples/game/log/gameserver.packets &"]},
+        "h3": {"ip": "10.10.3.3/24", "mac": "08:00:00:00:03:33",
+	       "commands":["route add default gw 10.10.3.30 dev eth0",
+                          "arp -i eth0 -s 10.10.3.30 08:00:00:00:03:00",
+			   "sudo tshark -V -f \"(tcp or udp) and dst net 10.10.3.3\" > examples/game/log/player1.packets &"]},
+        "h4": {"ip": "10.10.4.4/24", "mac": "08:00:00:00:04:44",
+	       "commands":["route add default gw 10.10.4.40 dev eth0",
+                          "arp -i eth0 -s 10.10.4.40 08:00:00:00:04:00",
+			   "sudo tshark -V -f \"(tcp or udp) and dst net 10.10.4.4\" > examples/game/log/player2.packets &"]}
+    },
+    "switches": {
+        "s1": {"cpu_port": 510},
+	"s2": {"cpu_port": 510},
+	"s3": {"cpu_port": 510}
+    },
+    "links": [
+        ["h1", "s1-p1"], ["s1-p2", "s2-p2"], ["s1-p3", "s3-p1"],
+        ["h2", "s2-p1"], ["s2-p3", "s3-p2"],
+        ["h3", "s3-p3"], ["h4", "s3-p4"]
+    ]
+}

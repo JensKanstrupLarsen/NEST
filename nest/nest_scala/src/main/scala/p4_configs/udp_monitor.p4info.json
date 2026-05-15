@@ -1,0 +1,194 @@
+{
+  "pkgInfo": {
+   "arch": "v1model"
+  },
+  "tables": [
+   {
+    "preamble": {
+     "id": 44540466,
+     "name": "Process.monitor_table",
+     "alias": "monitor_table"
+    },
+    "matchFields": [
+     {
+      "id": 1,
+      "name": "hdr.sessionH.senderRole",
+      "bitwidth": 8,
+      "matchType": "EXACT"
+     },
+     {
+      "id": 2,
+      "name": "hdr.sessionH.messageID",
+      "bitwidth": 8,
+      "matchType": "EXACT"
+     },
+     {
+      "id": 3,
+      "name": "hdr.sessionH.receiverRole",
+      "bitwidth": 8,
+      "matchType": "EXACT"
+     },
+     {
+      "id": 4,
+      "name": "monitorState",
+      "bitwidth": 8,
+      "matchType": "EXACT"
+     }
+    ],
+    "actionRefs": [
+     {
+      "id": 26339307
+     },
+     {
+      "id": 33398173
+     }
+    ],
+    "size": "1024"
+   },
+   {
+    "preamble": {
+     "id": 50014192,
+     "name": "Process.ipv4_lpm",
+     "alias": "ipv4_lpm"
+    },
+    "matchFields": [
+     {
+      "id": 1,
+      "name": "hdr.ipv4.dstAddr",
+      "bitwidth": 32,
+      "matchType": "LPM"
+     }
+    ],
+    "actionRefs": [
+     {
+      "id": 26706864
+     },
+     {
+      "id": 22338797
+     }
+    ],
+    "size": "1024"
+   },
+   {
+    "preamble": {
+     "id": 40455705,
+     "name": "Process.check_ports",
+     "alias": "check_ports"
+    },
+    "matchFields": [
+     {
+      "id": 1,
+      "name": "standard_metadata.ingress_port",
+      "bitwidth": 9,
+      "matchType": "EXACT"
+     },
+     {
+      "id": 2,
+      "name": "standard_metadata.egress_spec",
+      "bitwidth": 9,
+      "matchType": "EXACT"
+     }
+    ],
+    "actionRefs": [
+     {
+      "id": 17777132
+     },
+     {
+      "id": 21257015
+     }
+    ],
+    "size": "1024"
+   }
+  ],
+  "actions": [
+   {
+    "preamble": {
+     "id": 21257015,
+     "name": "NoAction",
+     "alias": "NoAction",
+     "annotations": [
+      "@noWarn(\"unused\")"
+     ]
+    }
+   },
+   {
+    "preamble": {
+     "id": 22338797,
+     "name": "Process.drop",
+     "alias": "drop"
+    }
+   },
+   {
+    "preamble": {
+     "id": 26706864,
+     "name": "Process.ipv4_forward",
+     "alias": "ipv4_forward"
+    },
+    "params": [
+     {
+      "id": 1,
+      "name": "dstAddr",
+      "bitwidth": 48
+     },
+     {
+      "id": 2,
+      "name": "port",
+      "bitwidth": 9
+     }
+    ]
+   },
+   {
+    "preamble": {
+     "id": 26339307,
+     "name": "Process.approve",
+     "alias": "approve"
+    },
+    "params": [
+     {
+      "id": 1,
+      "name": "nextState",
+      "bitwidth": 8
+     }
+    ]
+   },
+   {
+    "preamble": {
+     "id": 33398173,
+     "name": "Process.disapprove",
+     "alias": "disapprove"
+    }
+   },
+   {
+    "preamble": {
+     "id": 17777132,
+     "name": "Process.set_flags",
+     "alias": "set_flags"
+    },
+    "params": [
+     {
+      "id": 1,
+      "name": "is_ingressOrEgress",
+      "bitwidth": 1
+     }
+    ]
+   }
+  ],
+  "registers": [
+   {
+    "preamble": {
+     "id": 384015866,
+     "name": "Process.states",
+     "alias": "states"
+    },
+    "typeSpec": {
+     "bitstring": {
+      "bit": {
+       "bitwidth": 8
+      }
+     }
+    },
+    "size": 256
+   }
+  ],
+  "typeInfo": {}
+ }

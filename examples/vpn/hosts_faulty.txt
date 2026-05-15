@@ -1,0 +1,4 @@
+h1 auth.py 1
+h2 clientA_faulty.py 0
+h3 clientB.py 0
+h4 clientC.py 0

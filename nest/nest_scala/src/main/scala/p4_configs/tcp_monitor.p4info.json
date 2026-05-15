@@ -1,0 +1,262 @@
+{
+ "pkgInfo": {
+  "arch": "v1model"
+ },
+ "tables": [
+  {
+   "preamble": {
+    "id": 39893881,
+    "name": "Process.receiver_table",
+    "alias": "receiver_table"
+   },
+   "matchFields": [
+    {
+     "id": 1,
+     "name": "hdr.sessionH.senderRole",
+     "bitwidth": 4,
+     "matchType": "OPTIONAL"
+    },
+    {
+     "id": 2,
+     "name": "hdr.sessionH.receiverRole",
+     "bitwidth": 4,
+     "matchType": "OPTIONAL"
+    },
+    {
+     "id": 3,
+     "name": "monitorState",
+     "bitwidth": 32,
+     "matchType": "EXACT"
+    }
+   ],
+   "actionRefs": [
+    {
+     "id": 26339307
+    },
+    {
+     "id": 33398173
+    }
+   ],
+   "size": "1024"
+  },
+  {
+   "preamble": {
+    "id": 44540466,
+    "name": "Process.monitor_table",
+    "alias": "monitor_table"
+   },
+   "matchFields": [
+    {
+     "id": 1,
+     "name": "hdr.sessionH.senderRole",
+     "bitwidth": 4,
+     "matchType": "OPTIONAL"
+    },
+    {
+     "id": 2,
+     "name": "hdr.sessionH.messageID",
+     "bitwidth": 6,
+     "matchType": "OPTIONAL"
+    },
+    {
+     "id": 3,
+     "name": "hdr.sessionH.receiverRole",
+     "bitwidth": 4,
+     "matchType": "OPTIONAL"
+    },
+    {
+     "id": 4,
+     "name": "monitorState",
+     "bitwidth": 32,
+     "matchType": "EXACT"
+    }
+   ],
+   "actionRefs": [
+    {
+     "id": 32536123
+    },
+    {
+     "id": 33398173
+    }
+   ],
+   "size": "1024"
+  },
+  {
+   "preamble": {
+    "id": 50014192,
+    "name": "Process.ipv4_lpm",
+    "alias": "ipv4_lpm"
+   },
+   "matchFields": [
+    {
+     "id": 1,
+     "name": "hdr.ipv4.dstAddr",
+     "bitwidth": 32,
+     "matchType": "LPM"
+    }
+   ],
+   "actionRefs": [
+    {
+     "id": 26706864
+    },
+    {
+     "id": 22338797
+    }
+   ],
+   "size": "1024"
+  },
+  {
+   "preamble": {
+    "id": 40455705,
+    "name": "Process.check_ports",
+    "alias": "check_ports"
+   },
+   "matchFields": [
+    {
+     "id": 1,
+     "name": "standard_metadata.ingress_port",
+     "bitwidth": 9,
+     "matchType": "EXACT"
+    },
+    {
+     "id": 2,
+     "name": "standard_metadata.egress_spec",
+     "bitwidth": 9,
+     "matchType": "EXACT"
+    }
+   ],
+   "actionRefs": [
+    {
+     "id": 18205648
+    },
+    {
+     "id": 32871913
+    },
+    {
+     "id": 21257015
+    }
+   ],
+   "size": "1024"
+  }
+ ],
+ "actions": [
+  {
+   "preamble": {
+    "id": 21257015,
+    "name": "NoAction",
+    "alias": "NoAction",
+    "annotations": [
+     "@noWarn(\"unused\")"
+    ]
+   }
+  },
+  {
+   "preamble": {
+    "id": 22338797,
+    "name": "Process.drop",
+    "alias": "drop"
+   }
+  },
+  {
+   "preamble": {
+    "id": 26706864,
+    "name": "Process.ipv4_forward",
+    "alias": "ipv4_forward"
+   },
+   "params": [
+    {
+     "id": 1,
+     "name": "dstAddr",
+     "bitwidth": 48
+    },
+    {
+     "id": 2,
+     "name": "port",
+     "bitwidth": 9
+    }
+   ]
+  },
+  {
+   "preamble": {
+    "id": 32536123,
+    "name": "Process.approve_next_state",
+    "alias": "approve_next_state"
+   },
+   "params": [
+    {
+     "id": 1,
+     "name": "nextStateTmp",
+     "bitwidth": 32
+    }
+   ]
+  },
+  {
+   "preamble": {
+    "id": 26339307,
+    "name": "Process.approve",
+    "alias": "approve"
+   }
+  },
+  {
+   "preamble": {
+    "id": 33398173,
+    "name": "Process.disapprove",
+    "alias": "disapprove"
+   }
+  },
+  {
+   "preamble": {
+    "id": 18205648,
+    "name": "Process.set_ingress",
+    "alias": "set_ingress"
+   }
+  },
+  {
+   "preamble": {
+    "id": 32871913,
+    "name": "Process.set_egress",
+    "alias": "set_egress"
+   }
+  },
+  {
+   "preamble": {
+    "id": 19072783,
+    "name": "Process.end_session",
+    "alias": "end_session"
+   }
+  }
+ ],
+ "registers": [
+  {
+   "preamble": {
+    "id": 384015866,
+    "name": "Process.states",
+    "alias": "states"
+   },
+   "typeSpec": {
+    "bitstring": {
+     "bit": {
+      "bitwidth": 32
+     }
+    }
+   },
+   "size": 1024
+  },
+  {
+   "preamble": {
+    "id": 378679633,
+    "name": "Process.storedSSQN",
+    "alias": "storedSSQN"
+   },
+   "typeSpec": {
+    "bitstring": {
+     "bit": {
+      "bitwidth": 16
+     }
+    }
+   },
+   "size": 16384
+  }
+ ],
+ "typeInfo": {}
+}

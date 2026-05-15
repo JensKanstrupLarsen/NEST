@@ -1,0 +1,4 @@
+h1 user.py 1
+h2 localDNS.py 0
+h3 intAuthDNS.py 0
+h4 extAuthDNS.py 0

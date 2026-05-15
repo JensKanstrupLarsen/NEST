@@ -1,0 +1,5 @@
+h1 client.py 1
+h2 localDNS.py 0
+h3 rootDNS.py 0
+h4 TLDDNS.py 0
+h5 authDNS.py 0
