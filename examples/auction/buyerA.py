@@ -3,8 +3,12 @@ import argparse
 import random
 import socket
 import time
+import sys
+import os
 from threading import Thread
 
+sys.path.insert(1, os.path.join(sys.path[0], '../nest_python'))
+import error_handling
 from main import AuctionSessionHandler, Auction, BuyerA, BuyerB, Init, Bid, Confirm, Resend, Winner, Loser, Pay, SendItem
 
 def protocol(s):
@@ -21,6 +25,12 @@ def protocol(s):
             auction_over = True
         elif (type(reply) == Loser):
             auction_over = True
+        elif (type(reply) == Resend):
+            continue
+        else:
+            error_handling.unexpected_message()
+            #print("Unexpected message!")
+            #return 1
 
 if __name__ == '__main__':
     role = BuyerA

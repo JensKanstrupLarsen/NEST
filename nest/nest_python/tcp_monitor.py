@@ -6,7 +6,9 @@ import argparse
 import random
 import socket
 import time
+import datetime
 
+import error_handling
 from session_header import SessionHeader
 from threading import Thread, Condition
 from scapy.all import IP, TCP, Ether, get_if_hwaddr, get_if_list, sendp, Packet, XByteField, XIntField, sniff, bind_layers
@@ -23,16 +25,19 @@ class Message:
     def __init__(self, text=""):
         self.text = text
 
+def packet_mismatch():
+    error_handling.unexpected_message()
+
 def sessionWrapper(sh, s, session_id, protocol):
     sh.session_locks[session_id].acquire()
-    print("Starting session " + str(session_id))
+    print("Starting session " + str(session_id) + " ("+str(datetime.datetime.now().isoformat())+")")
     sys.stdout.flush()
     sh.sessions[session_id] = s
     protocol(s)
     s.closeSession()
 
 def sessionWrapperNoID(sh, s, protocol):
-    print("Starting session <no id>")
+    print("Starting session without ID ("+str(datetime.datetime.now().isoformat())+")")
     sys.stdout.flush()
     protocol(s)
     s.closeSession()
@@ -140,7 +145,7 @@ class SessionHandler:
             else:
                 t[1].join(0.1)
             if t[1].is_alive():
-                print("Session "+str(t[0].session_id)+" timed out after 10 seconds")
+                print("Session "+str(t[0].session_id)+" timed out after 10 seconds ("+str(datetime.datetime.now().isoformat())+")")
                 sys.stdout.flush()
                 sys.stderr.flush()
                 total_timeouts += 1
@@ -165,11 +170,38 @@ def sendMonitorStop(s, role):
     sock.close()
 """
 
+def compute_checksum(old_checksum, new_packet):
+    return old_checksum + new_packet.sender_id * new_packet.message_id
+
+def get_packet_sequences(sid, packets, old_checksum, target_checksum=None):
+    result = []
+    #print("["+str(sid)+"] Checking "+str(len(packets))+" packets")
+    for i in range(len(packets)):
+        pkt = packets[i]
+        expected_checksum = compute_checksum(old_checksum, pkt)
+        if (not target_checksum and expected_checksum == pkt.checksum) or (expected_checksum == target_checksum):
+            #print("["+str(sid)+"] Wow! a match! (checksum "+str(pkt.checksum if not target_checksum else target_checksum)+")")
+            result += [[pkt]]
+        else:
+            #if target_checksum:
+            #    print("["+str(sid)+"] Checksum mismatch (current is "+str(old_checksum)+", computed "+str(expected_checksum)+", but target checksum is "+str(pkt.checksum)+")")
+            #else:
+            #    print("["+str(sid)+"] Checksum mismatch (current is "+str(old_checksum)+", computed "+str(expected_checksum)+", but packet itself has "+str(pkt.checksum)+")")
+            new_checksum = compute_checksum(old_checksum, pkt)
+            next_packets = get_packet_sequences(sid, packets[:i] + packets[(i+1):], new_checksum,
+                                                pkt.checksum if not target_checksum else target_checksum)
+            result += [[pkt] + pkts for pkts in next_packets]
+    #print("["+str(sid)+"] "+str(result))
+    return result
+            
+
 class Session:
     def __init__(self, sh, session_id=0, terminates=[]):
         self.sh = sh
         self.session_id = session_id
+        self.pkt_sequences = []
         self.seq_nums = {sh.role.id : 0}
+        self.checksum = 0 #self.checksums = {sh.role.id : 0}
         self.connections = {}
         self.terminates = terminates
 
@@ -178,15 +210,49 @@ class Session:
         target_packet = None
         with self.sh.in_buffer_lock:
             while (target_packet == None):
-                for pkt in self.sh.in_buffer:
+                session_packets = [p for p in self.sh.in_buffer if p.session_id == self.session_id or (self.session_id == 0 and p.session_id not in self.sh.sessions)]
+                #print("["+str(self.session_id)+"] There are "+str(len(session_packets))+" packets in the buffer for this session:")
+                #for p in session_packets:
+                #    print("["+str(self.session_id)+"]",p.sender_id, p.message_id, p.receiver_id, p.checksum)
+                for pkts in get_packet_sequences(self.session_id, session_packets, self.checksum):
+                    if pkts not in self.pkt_sequences:
+                        sequence = ""
+                        for pkt in pkts:
+                            sequence += pkt.to_string()+","
+                        #print("["+str(self.session_id)+"] Added sequence: "+sequence+" ("+str(datetime.datetime.now().isoformat())+")")
+                        
+                        self.pkt_sequences += [pkts]
+                #print("["+str(self.session_id)+"] Found "+str(len(valid_packets))+" valid packets:")
+                #for p in valid_packets:
+                #    print("["+str(self.session_id)+"]",p.sender_id, p.message_id, p.receiver_id, p.checksum)
+                for pkts in self.pkt_sequences:
+                    pkt = pkts[0]
+                    # If the packet session ID matches OR the session has no ID yet
                     if ((pkt.session_id == self.session_id or (self.session_id == 0 and not pkt.session_id in self.sh.sessions))
+                        # And the message has the expected ID OR can be anything
                         and (message == None or pkt.message_id == message.id)
+                        # And the sender role is as expected
                         and pkt.sender_id == sender.id
+                        # And the receiver (this session) role is as expected
                         and pkt.receiver_id == self.sh.role.id
+                        # And there is no good packet yet
                         and target_packet == None
+                        # And the SSN is high enough OR there is no recorded SSN for this sender yet
                         and (pkt.sender_id not in self.seq_nums or pkt.seq_num > self.seq_nums[pkt.sender_id])):
-                        #and (sender.id in self.seq_nums and pkt.seq_num > self.seq_nums[sender.id]) or (self.session_id == 0 and pkt.seq_num == 1)):
+
+                        #expected_checksum = compute_checksum(self.checksum, pkt)
+                        #if pkt.sender_id in self.checksums:
+                        #    expected_checksum = compute_checksum(self.checksums[pkt.sender_id], pkt)
+                        #else:
+                        #    expected_checksum = compute_checksum(0,pkt)
+
+                        # And the checksum matches
+                        #print("["+str(self.session_id)+"] Checking packet validity...")
                         target_packet = pkt
+                        #if pkt in valid_packets:
+                        #    target_packet = pkt
+                        #else:
+                        #    print("["+str(self.session_id)+"] Bad checksum!")
                 if target_packet == None:
                     self.sh.in_buffer_lock.wait()
             self.sh.in_buffer.remove(target_packet)
@@ -194,14 +260,23 @@ class Session:
                 self.session_id = target_packet.session_id
                 self.sh.session_locks[self.session_id].acquire()
                 self.sh.sessions[self.session_id] = self
-                print("Using session number " + str(self.session_id))
+                # print("Using session number " + str(self.session_id))
+            self.checksum = compute_checksum(self.checksum, target_packet)
+            self.pkt_sequences = [pkts[1:] for pkts in self.pkt_sequences if len(pkts) > 1]
+            #if not target_packet.sender_id in self.checksums:
+            #    self.checksums[target_packet.sender_id] = compute_checksum(
+            #        0, target_packet)
+            #else:
+            #    self.checksums[target_packet.sender_id] = compute_checksum(
+            #        self.checksums[target_packet.sender_id], target_packet)
             msg = self.sh.toMessage(target_packet)
-            print("["+str(self.session_id)+"] Received \"" + msg.label + "\" from " + sender.name)
+            print("["+str(self.session_id)+"] Received \"" + msg.label + "\" from " + sender.name+" (new checksum: "+str(self.checksum)+")")
             sys.stdout.flush()
             self.seq_nums[target_packet.sender_id] = target_packet.seq_num
             return msg
 
     def sendMsg(self, receiver, message):
+        #print("["+str(self.session_id)+"] Trying to send...")
         self.seq_nums[self.sh.role.id] += 1
         seq_num = self.seq_nums[self.sh.role.id]
         if self.session_id != 0:
@@ -215,36 +290,11 @@ class Session:
                 receiver_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 receiver_socket.connect((receiver.ip, 8888))
                 self.connections[receiver.id] = receiver_socket
-                print("["+str(self.session_id)+"] Connected to "+str(receiver.ip))
+                #print("["+str(self.session_id)+"] Connected to "+str(receiver.ip))
             receiver_socket.send(msg.to_bytes())
-            #self.sh.out_buffer += [(msg, receiver.ip)]
-            #self.sh.out_buffer_lock.notify()
             print("["+str(self.session_id)+"] Sending \"" + message.label + "\" to " + receiver.name)
             sys.stdout.flush()
             sys.stderr.flush()
-
-    """
-    def sendMsg(self, receiver, message):
-        if receiver.id in self.seq_nums:
-            self.seq_nums[receiver.id] += 1
-        else:
-            self.seq_nums[receiver.id] = 1
-        seq_num = self.seq_nums[receiver.id]
-        print("["+str(self.session_id)+"] Sending \"" + message.label + "\" to " + receiver.name)
-        receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        receiver_socket.connect((receiver.ip, 8888))
-        session_message = SessionHeader(
-            self.session_id,
-            seq_num,
-            self.sh.role.id,
-            message.id,
-            receiver.id,
-            message.text).to_bytes()
-        sent = receiver_socket.send(session_message)
-        receiver_socket.close()
-        if sent == 0:
-            raise RuntimeError("socket connection broken")
-    """
 
     def closeSession(self):
         time.sleep(2) # Making sure that all retransmissions have gone through
@@ -253,9 +303,6 @@ class Session:
             session_message = SessionHeader(self.session_id, 0, role.id, 0, 0, "")
             sock.sendto(session_message.to_bytes(), ("10.0.0.0", 8888))
             sock.close()
-            #thread = Thread(target=sendMonitorStop, args=(self,))
-            #thread.daemon = False
-            #thread.start()
         self.sh.removeSession(self.session_id)
         print("["+str(self.session_id)+"] Closing session")
         sys.stdout.flush()

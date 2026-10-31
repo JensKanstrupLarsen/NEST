@@ -4,7 +4,10 @@ import random
 import socket
 import time
 import sys
+import os
 
+sys.path.insert(1, os.path.join(sys.path[0], '../nest_python'))
+import error_handling
 from main import GameSessionHandler, Coordinator, GameServer, Player_1, Player_2, Init, LookForGame, GameFound, TurnStart, TakeAction, Move, YouWon, YouLost, GameOver
 
 def protocol(s):
@@ -18,6 +21,10 @@ def protocol(s):
             s.sendMsg(GameServer, TakeAction("act"))
         elif (type(gameStatus) == YouWon or type(gameStatus) == YouLost):
             gameOver = True
+        else:
+            error_handling.unexpected_message()
+            # print("Unexpected message!")
+            # return 1
 
 if __name__ == '__main__':
     role = Player_1

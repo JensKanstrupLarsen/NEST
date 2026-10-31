@@ -72,3 +72,4 @@ class CDNSessionHandler(SessionHandler):
             return IPAddr(session_header.message_text)
         else:
             return Message()
+

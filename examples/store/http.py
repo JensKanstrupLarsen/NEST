@@ -3,7 +3,11 @@ import argparse
 import random
 import socket
 import time
+import sys
+import os
 
+sys.path.insert(1, os.path.join(sys.path[0], '../nest_python'))
+import error_handling
 from main import StoreSessionHandler, ExternalClient, HTTP_Gateway, Inventory, PlaceOrder, GetSKUDetails, SKUDetails, ConfirmOrder, ValidCC, Payment, VerifyCC, InvalidCC, MakeCharge, MakeOrder, CancelOrder
 
 def protocol(s):
@@ -27,6 +31,10 @@ def protocol(s):
         elif (type(orderQuery) == CancelOrder):
             s.sendMsg(ExternalClient, Cancel())
             done = True
+        else:
+            error_handling.unexpected_message()
+            # print("Unexpected message!")
+            # return 1
 
 if __name__ == '__main__':
     # Create a session handler

@@ -50,6 +50,7 @@ header sessionH_t {
     bit<6>  messageID;
     agent_t senderRole;
     agent_t receiverRole;
+    bit<8>  checksum;
     bit<16> seqNum;
 }
 

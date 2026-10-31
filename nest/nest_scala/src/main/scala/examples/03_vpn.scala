@@ -36,9 +36,9 @@ val lst_Auth =
                 IntChoice(Map((a_ClientB, l_Accept) ->
                 IntChoice(Map((a_ClientC, l_Accept) ->
                 ExtChoice(a_ClientA, Map(l_Terminate ->
-                ExtChoice(a_ClientB, Map(l_Terminate ->
-                ExtChoice(a_ClientC, Map(l_Terminate ->
-                End())))))))))),
+//                ExtChoice(a_ClientB, Map(l_Terminate ->
+//                ExtChoice(a_ClientC, Map(l_Terminate ->
+                End())))))),
             (a_ClientA, l_Deny) ->
                 IntChoice(Map((a_ClientB, l_Deny) ->
                 IntChoice(Map((a_ClientC, l_Deny) ->
@@ -81,8 +81,8 @@ val lst_ClientB =
                             IntChoice(Map((a_ClientA, l_ClientResponse) ->
                             Var("responseA"))),
                         l_Terminate ->
-                            IntChoice(Map((a_Auth, l_Terminate) ->
-                            End()))))))))))))
+//                            IntChoice(Map((a_Auth, l_Terminate) ->
+                            End()))))))))))
 
 val lst_ClientC =
     ExtChoice(a_Auth, Map(l_Init ->
@@ -98,8 +98,8 @@ val lst_ClientC =
                             IntChoice(Map((a_ClientA, l_ClientResponse) ->
                             Var("responseA"))),
                         l_Terminate ->
-                            IntChoice(Map((a_Auth, l_Terminate) ->
-                            End()))))))))))))
+//                            IntChoice(Map((a_Auth, l_Terminate) ->
+                            End()))))))))))
 
 @main def debug() =
     val questionable = Rec("rec", ExtChoice(a_ClientA, Map(

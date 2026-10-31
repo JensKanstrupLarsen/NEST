@@ -3,7 +3,11 @@ import argparse
 import random
 import socket
 import time
+import sys
+import os
 
+sys.path.insert(1, os.path.join(sys.path[0], '../nest_python'))
+import error_handling
 from main import POP3SessionHandler, POPClient, POPServer, USER, PASS, LIST, MSGS, RETR, OK, ERR, DELE, NOOP, QUIT
 
 def listMessages(s):
@@ -54,6 +58,10 @@ def protocol(s):
         elif (query == QUIT):
             loggedIn = False
             s.sendMsg(POPClient, OK())
+        else:
+            error_handling.unexpected_message()
+            # print("Unexpected message!")
+            # return 1
 
 if __name__ == '__main__':
     role = POPServer

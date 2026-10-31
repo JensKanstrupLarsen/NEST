@@ -24,8 +24,8 @@ def protocol(s):
             s.sendMsg(Client_B, Acc("B"))
             s.sendMsg(Client_C, Acc("C"))
             s.recvMsg(Client_A, Term)
-            s.recvMsg(Client_B, Term)
-            s.recvMsg(Client_C, Term)
+            #s.recvMsg(Client_B, Term)
+            #s.recvMsg(Client_C, Term)
             return
         else:
             s.sendMsg(Client_A, Deny("A"))

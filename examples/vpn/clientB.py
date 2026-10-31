@@ -6,7 +6,8 @@ import time
 import sys
 import os
 
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+sys.path.insert(1, os.path.join(sys.path[0], '../nest_python'))
+import error_handling
 from main import VPNSessionHandler, Authenticator, Client_A, Client_B, Client_C, Init, GetAuth, Acc, Deny, Rqs, Rsp, Term
 
 def protocol(s):
@@ -24,7 +25,10 @@ def protocol(s):
             s.sendMsg(Client_A, Rsp("In"))
         elif (type(msg) == Term):
             stop_receiving = True
-    s.sendMsg(Authenticator, Term("End"))
+        else:
+            error_handling.unexpected_message() #print("Unexpected message!")
+            #return 1
+    #s.sendMsg(Authenticator, Term("End"))
     print("Done.")
 
 if __name__ == '__main__':

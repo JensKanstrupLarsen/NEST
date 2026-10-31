@@ -21,6 +21,11 @@ def protocol(s):
             auction_over = True
         elif (type(reply) == Loser):
             auction_over = True
+        elif (type(reply) == Resend):
+            continue
+        else:
+            print("Unexpected message!")
+            # return 1
 
 if __name__ == '__main__':
     role = BuyerB

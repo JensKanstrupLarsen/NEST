@@ -3,14 +3,25 @@ import argparse
 import random
 import socket
 import time
+import sys
+import os
 
+sys.path.insert(1, os.path.join(sys.path[0], '../nest_python'))
+import error_handling
 from main import FirewallSessionHandler, ClientInt, ClientExt, Request, Response, Terminate
 
 def protocol(s):
-    for i in range(10):
-        s.recvMsg(ClientInt, Request)
-        s.sendMsg(ClientInt, Response("data"))
-    s.recvMsg(ClientInt, Terminate)
+    outgoingComms = True
+    while outgoingComms:
+        msg = s.recvMsg(ClientInt)
+        if type(msg) == Request:
+            s.sendMsg(ClientInt, Response("data"))
+        elif type(msg) == Terminate:
+            outgoingComms = False
+        else:
+            error_handling.unexpected_message()
+            #print("Unexpected message!")
+            #return 1
     for i in range(10):
         s.sendMsg(ClientInt, Request("params"))
         s.recvMsg(ClientInt, Response)

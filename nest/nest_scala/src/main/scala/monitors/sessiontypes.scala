@@ -49,6 +49,7 @@ enum SessionTypeLabel:
     case STL_Internal(from : STAgent, to : STAgent, label : STLabel)
 import SessionTypeLabel._
 
+// Unfolds a session type with a given variable and continuation
 def unfold(lst : LocalSessionType, x : String, rec : LocalSessionType) : LocalSessionType =
     lst match
         case End() => End()
@@ -57,6 +58,7 @@ def unfold(lst : LocalSessionType, x : String, rec : LocalSessionType) : LocalSe
         case IntChoice(branches) => IntChoice(branches.map((br,cont) => (br,unfold(cont, x, rec))))
         case ExtChoice(sender, branches) => ExtChoice(sender, branches.map((br,cont) => (br,unfold(cont, x, rec))))
 
+// 
 def foldBranches[B](branches : Map[B, LocalSessionType], extLabel : ExternalLabel, seenStates : Set[LocalSessionType]) : Map[B, LocalSessionType] =
     branches.foldLeft(Map[B, LocalSessionType]())((acc,br) =>
         val (branchCase, cont) = br
@@ -65,6 +67,13 @@ def foldBranches[B](branches : Map[B, LocalSessionType], extLabel : ExternalLabe
             case Some(newCont) =>
                 acc + (branchCase -> newCont))
 
+/** Computes the maximal residual of `lst` under `extLabel`, if accepted.
+ *
+ *  A send is accepted only by a direct branch hit (internal choice); a receive
+ *  is accepted either by a direct hit (external choice from the same sender)
+ *  or by keeping exactly the branches whose targets accept it (prefix), which
+ *  additionally requires the sender to differ from the choice owners.
+ */
 def takeBranch(lst : LocalSessionType, extLabel : ExternalLabel, seenStates : Set[LocalSessionType]) : Option[LocalSessionType] =
     if !seenStates.contains(lst) then
         lst match
@@ -73,27 +82,33 @@ def takeBranch(lst : LocalSessionType, extLabel : ExternalLabel, seenStates : Se
             case Rec(x, cont) => takeBranch(unfold(cont, x, Rec(x, cont)), extLabel, seenStates + lst)
             case IntChoice(branches) =>
                 extLabel match
+                    // Direct hit yields the branch target; a miss is rejected.
                     case EL_Send(receiver, label) =>
                         branches.get((receiver, label)) match
-                            case None =>
-                                val newBranches = foldBranches(branches, extLabel, seenStates + lst)
-                                if newBranches.isEmpty then None else Some(IntChoice(newBranches))
+                            case None => None
                             case Some(cont) => Some(cont)
                     case EL_Recv(sender, label) =>
-                        val newBranches = foldBranches(branches, extLabel, seenStates + lst)
-                        if newBranches.isEmpty then None else Some(IntChoice(newBranches))
-            case ExtChoice(sender, branches) =>
+                        // Prefix keeps the branches whose targets accept the receive,
+                        // provided the sender differs from every branch receiver.
+                        if branches.keys.forall((receiver, _) => receiver != sender) then
+                            val newBranches = foldBranches(branches, extLabel, seenStates + lst)
+                            if newBranches.isEmpty then None else Some(IntChoice(newBranches))
+                        else None
+            case ExtChoice(choiceSender, branches) =>
                 extLabel match
-                    case EL_Send(receiver, label) =>
-                        val newBranches = foldBranches(branches, extLabel, seenStates + lst)
-                        if newBranches.isEmpty then None else Some(ExtChoice(sender, newBranches))
-                    case EL_Recv(sender, label) =>
-                        branches.get(label) match
-                            case None =>
-                                val newBranches = foldBranches(branches, extLabel, seenStates + lst)
-                                if newBranches.isEmpty then None else Some(ExtChoice(sender, newBranches))
-                            case Some(cont) =>
-                                Some(cont)
+                    case EL_Send(_, _) =>
+                        // External choices never accept sends.
+                        None
+                    case EL_Recv(recvSender, label) =>
+                        if recvSender == choiceSender then
+                            // Direct hit yields the branch target; a miss is rejected.
+                            branches.get(label) match
+                                case None => None
+                                case Some(cont) => Some(cont)
+                        else
+                            // Prefix keeps the branches whose targets accept the receive.
+                            val newBranches = foldBranches(branches, extLabel, seenStates + lst)
+                            if newBranches.isEmpty then None else Some(ExtChoice(choiceSender, newBranches))
     else
         None
 
@@ -105,7 +120,9 @@ def getContextTrs(lst : LocalSessionType, hasSentTo : List[STAgent], hasRcvdFrom
         lst match
             case End() => Set()
             case Var(x) => throw Exception("Open type!")
-            case Rec(x, cont) => getContextTrs(unfold(cont, x, Rec(x, cont)), hasSentTo, hasRcvdFrom, seenStates + lst)
+            case Rec(x, cont) =>
+                // Unfold the recursion and try again, but remember the old type before unfolding
+                getContextTrs(unfold(cont, x, Rec(x, cont)), hasSentTo, hasRcvdFrom, seenStates + lst)
             case IntChoice(branches) =>
                 branches.foldLeft(Set[(LocalSessionType, ExternalLabel)]())((acc, kv) =>
                     val ((receiver, label), cont) = kv
@@ -129,21 +146,70 @@ def getContextTrs(lst : LocalSessionType, hasSentTo : List[STAgent], hasRcvdFrom
     else
         Set()
 
+/** Collects every external label observable from `lst`.
+ *
+ *  Sends come from internal-choice branches and receives come from
+ *  external-choice branches (paired with the offering sender); recursion
+ *  is unfolded once per visited type so the result stays finite.
+ */
+def alphabetOf(lst : LocalSessionType) : Set[ExternalLabel] =
+    def go(t : LocalSessionType, seen : Set[LocalSessionType]) : Set[ExternalLabel] =
+        if seen.contains(t) then Set()
+        else
+            t match
+                case End() => Set()
+                case Var(_) => Set()
+                case Rec(x, cont) =>
+                    go(unfold(cont, x, Rec(x, cont)), seen + t)
+                case IntChoice(branches) =>
+                    branches.foldLeft(Set[ExternalLabel]())((acc, kv) =>
+                        val ((receiver, label), cont) = kv
+                        acc + EL_Send(receiver, label) ++ go(cont, seen + t))
+                case ExtChoice(sender, branches) =>
+                    branches.foldLeft(Set[ExternalLabel]())((acc, kv) =>
+                        val (label, cont) = kv
+                        acc + EL_Recv(sender, label) ++ go(cont, seen + t))
+    go(lst, Set())
+
+/** Computes the accepted transitions out of `lst`.
+ *
+ *  Each element pairs a maximal residual with the label that reaches it;
+ *  labels with no residual are dropped.
+ */
+def monitorSteps(lst : LocalSessionType) : Set[(LocalSessionType, ExternalLabel)] =
+    alphabetOf(lst).flatMap(label =>
+        takeBranch(lst, label, Set()) match
+            case None => Set()
+            case Some(next) => Set((next, label)))
+
+/** Builds the monitor state machine for agent `a` observing `lst`.
+ *
+ *  Each reachable session type becomes one state. Every state is expanded once:
+ *  each accepted external label yields one transition carrying the label, and
+ *  the transition targets the maximal residual under that label. Residuals not
+ *  seen before join the work set until no new states remain.
+ */
 def LST_to_SM(lst : LocalSessionType, a : STAgent) : StateMachine =
+    // Mapping session types to (integer) states
     var stateMap = Map[LocalSessionType, Int]()
+    // Tracking all transitions between session types
     var trs = Set[(LocalSessionType, ExternalLabel, LocalSessionType)]()
     var currentStateID = 0
     var workingStates = Set(lst)
     while (workingStates.nonEmpty) do
         val workingState = workingStates.head
         workingStates = workingStates.tail
+        // If this session type isn't already mapped to a state
         if (!stateMap.contains(workingState)) then
-            val newTrs =
-                getContextTrs(workingState, List(), List(), Set())//stateMap.keys.toSet)
+            // Accepted outgoing transitions of this state, each with its residual.
+            val newTrs = monitorSteps(workingState)
+            // Add the session type to the state map
             stateMap += (workingState -> currentStateID)
             currentStateID += 1
-            workingStates ++= newTrs.map((lst, _) => lst)
-            trs ++= newTrs.map((lst, label) => (workingState, label, lst))
+            // Explore every residual reached from this state.
+            workingStates ++= newTrs.map((next, _) => next)
+            // Record one transition per accepted label.
+            trs ++= newTrs.map((next, label) => (workingState, label, next))
             if (stateMap.size > 1000) then
                 throw Exception("Kablooie (too many states)")
     return StateMachine(stateMap.values.toSet, trs.map((s,l,t) =>

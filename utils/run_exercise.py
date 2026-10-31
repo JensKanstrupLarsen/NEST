@@ -35,9 +35,12 @@ from p4_mininet import P4Host, P4Switch
 from p4runtime_switch import P4RuntimeSwitch
 from p4runtime_lib.switch import ShutdownAllSwitchConnections
 
-def runOnHost(host, arg, delay):
-    sleep(delay)
+def runOnHost(host, arg, delay, extra_cmd):
+    sleep(delay*2) # Start time seems to vary a bit, heighten diff
     print("["+host.name+"] > "+arg)
+    if extra_cmd is not None:
+        host.cmd("echo \"setting up tamperer...\"")
+        host.cmd(extra_cmd)
     host.cmd(arg)
 
 def configureP4Switch(**switch_args):
@@ -268,9 +271,11 @@ class ExerciseRunner:
             printout += ", faulty" if self.test_args["faulty"] else ""
             printout += ", with loss" if self.test_args["enable-loss"] else ""
             print(printout)
-            filename = "examples/"+example+"/hosts_faulty.txt" if self.test_args["faulty"] else "examples/"+example+"/hosts_normal.txt"
+            filename = "examples/"+example+"/hosts_faulty.txt" if self.test_args["faulty"] else "examples/"+example+"/hosts_tamper.txt" if self.test_args["tamper"] else "examples/"+example+"/hosts_normal.txt"
             is_faulty = "Faulty" if self.test_args["faulty"] else ""
             is_lossy = "Lossy" if self.test_args["enable-loss"] else ""
+            is_tamper = "Tamper" if self.test_args["tamper"] else ""
+            is_checksum = "Checksum" if self.test_args["checksum"] else ""
             host_threads = {}
             with open(filename, 'r') as file:
                 for line in file:
@@ -278,9 +283,19 @@ class ExerciseRunner:
                     host_name = host_settings[0]
                     host_program = "examples/"+example+"/"+host_settings[1]
                     host_delay = host_settings[2]
+                    extra_cmd = None
+                    if self.test_args["tamper"] and len(host_settings) > 3:
+                        extra_cmd = (
+                            #"ip link add vethA type veth peer name vethB; "
+                            #+ "ip link set vethA up; "
+                            #+ "ip link set vethB up; "
+                            #+ "tc qdisc add dev eth0 clsact; "
+                            #+ "tc filter add dev eth0 egress protocol ip flower ip_proto tcp ip_tos 0x00 action mirred egress redirect dev vethA; "
+                            "sudo iptables -A OUTPUT -p tcp -j NFQUEUE --queue-num 1; "
+                            + "sudo python3 tamper/tamper.py "+host_settings[3]+" "+host_settings[4]+" "+host_settings[5]+" &> tamperer_output.txt &")
                     h = self.net.get(host_name)
                     thread = None
-                    thread = Thread(target=runOnHost, args=(h, "python3 "+host_program+" &> .example_logs/"+example+monitored+protocol+is_faulty+is_lossy+"_"+host_name+".log", int(host_delay)))
+                    thread = Thread(target=runOnHost, args=(h, "python3 "+host_program+" &> .example_logs/"+example+monitored+protocol+is_faulty+is_lossy+is_tamper+is_checksum+"_"+host_name+".log", int(host_delay), extra_cmd))
                     thread.daemon = False
                     host_threads[host_name] = thread
                     thread.start()
@@ -465,6 +480,8 @@ def get_args():
     parser.add_argument('--example', type=str, required=False)
     parser.add_argument('--monitored', required=False, action='store_true', default=False)
     parser.add_argument('--faulty', required=False, action='store_true', default=False)
+    parser.add_argument('--tamper', required=False, action='store_true', default=False)
+    parser.add_argument('--checksum', required=False, action='store_true', default=False)
     parser.add_argument('--protocol', type=str, required=False)
     parser.add_argument('--enable-loss', required=False, action='store_true', default=False)
     return parser.parse_args()
@@ -477,6 +494,6 @@ if __name__ == '__main__':
     args = get_args()
     exercise = ExerciseRunner(args.topo, args.log_dir, args.pcap_dir,
                               args.switch_json, args.behavioral_exe, args.quiet,
-                              {"example":args.example, "monitored":args.monitored, "faulty":args.faulty, "protocol":args.protocol, "enable-loss":args.enable_loss})
+                              {"example":args.example, "monitored":args.monitored, "faulty":args.faulty, "protocol":args.protocol, "enable-loss":args.enable_loss, "tamper":args.tamper, "checksum":args.checksum})
 
     exercise.run_exercise()

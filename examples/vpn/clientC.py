@@ -24,7 +24,7 @@ def protocol(s):
             s.sendMsg(Client_A, Rsp("In"))
         elif (type(msg) == Term):
             stop_receiving = True
-    s.sendMsg(Authenticator, Term("End"))
+    #s.sendMsg(Authenticator, Term("End"))
     print("Done.")
 
 if __name__ == '__main__':

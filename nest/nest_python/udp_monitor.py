@@ -7,6 +7,7 @@ import random
 import socket
 import time
 
+import error_handling
 from session_header import SessionHeader
 from threading import Thread, Condition
 from scapy.all import IP, TCP, Ether, get_if_hwaddr, get_if_list, sendp, Packet, XByteField, XIntField, sniff, bind_layers
@@ -22,6 +23,9 @@ class Message:
 
     def __init__(self, text=""):
         self.text = text
+
+def packet_mismatch():
+    error_handling.unexpected_message()
 
 def sessionWrapper(sh, s, session_id, protocol):
     sh.session_locks[session_id].acquire()

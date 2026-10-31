@@ -73,17 +73,19 @@ header tcpOptions_t {
     varbit<320> options;
 }
 
-// 64 bits / 8 bytes
+// 56 bits / 7 bytes
 header sessionH_t {
     bit<8>  msgLength;
     bit<10> sessionID;
     bit<6>  messageID;
     agent_t senderRole;
     agent_t receiverRole;
+    bit<8>  checksum;
     bit<16> seqNum;
 }
 
 struct metadata {
+    bit<16> tcpLength;
     /* empty */
 }
 
@@ -178,8 +180,12 @@ control Process(inout headers hdr,
     bit<32> nextState;
 
     register<bit<16>>(16384) storedSSQN;
+    // hash using the sender ID, store based on receiver ID
+    register<bit<16>>(16384) storedChecksum;
     bit<32> ssqn_index;
     bit<16> ssqn;
+    bit<32> chksum_index;
+    bit<16> chksum;
 
     bool is_egress = false;
     bool is_ingress = false;
@@ -196,38 +202,51 @@ control Process(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
+    action compute_new_checksum() {
+        chksum_index = ((bit<32>)sessionID << 4) + (bit<32>)hdr.sessionH.receiverRole;
+        storedChecksum.read(chksum, chksum_index);
+        chksum = chksum + (bit<16>)hdr.sessionH.senderRole * (bit<16>)hdr.sessionH.messageID;
+	storedChecksum.write((bit<32>)chksum_index, chksum);
+    }
+
+    action update_packet_checksum() {
+        chksum_index = ((bit<32>)sessionID << 4) + (bit<32>)hdr.sessionH.receiverRole;
+        storedChecksum.read(chksum, chksum_index);
+        hdr.sessionH.checksum = (bit<8>)chksum;
+    }
+
     action approve_next_state(bit<32> nextStateTmp) {
-	nextState = nextStateTmp;
-	acceptMessage = true;
+        nextState = nextStateTmp;
+        acceptMessage = true;
     }
 
     action approve() {
-	acceptMessage = true;
+	    acceptMessage = true;
     }
 
     action disapprove() {
-	// mark_to_drop(standard_metadata);
-	acceptMessage = false;
+        // mark_to_drop(standard_metadata);
+        acceptMessage = false;
     }
 
     action set_ingress() {
-	is_ingress = true;
+	    is_ingress = true;
     }
 
     action set_egress() {
-	is_egress = true;
+	    is_egress = true;
     }
 
     action end_session() {
-	states.write((bit<32>)sessionID, 0);
+	    states.write((bit<32>)sessionID, 0);
 
-	storedSSQN.write(((bit<32>)sessionID << 4) + (bit<32>)hdr.sessionH.senderRole, 0);
+	    storedSSQN.write(((bit<32>)sessionID << 4) + (bit<32>)hdr.sessionH.senderRole, 0);
     }
 
     table receiver_table {
         key = {
-	    hdr.sessionH.senderRole:   optional;
-	    hdr.sessionH.receiverRole: optional;
+            hdr.sessionH.senderRole:   optional;
+            hdr.sessionH.receiverRole: optional;
             monitorState:              exact;
         }
         actions = {
@@ -284,6 +303,7 @@ control Process(inout headers hdr,
 	    ipv4_lpm.apply();
 	    if (hdr.tcp.isValid()) {
 		if (hdr.sessionH.isValid()) {
+		    meta.tcpLength = hdr.ipv4.totalLen - (bit<16>)(hdr.ipv4.ihl)*4; // Session header length
 		    sessionID = hdr.sessionH.sessionID;
 		    is_ingress = false; is_egress = false;
 
@@ -292,7 +312,7 @@ control Process(inout headers hdr,
 		    if (is_ingress || is_egress) {
 
 			ssqn_index = ((bit<32>)sessionID << 4) + (bit<32>)hdr.sessionH.senderRole;
-				
+
 			storedSSQN.read(ssqn, ssqn_index);
 
 			nextState = 0;
@@ -309,7 +329,9 @@ control Process(inout headers hdr,
 					{sessionID, monitorState, nextState, hdr.sessionH.senderRole, hdr.sessionH.messageID, hdr.sessionH.seqNum, hdr.sessionH.receiverRole});
 				    states.write((bit<32>)sessionID, nextState);
 				    storedSSQN.write(ssqn_index, hdr.sessionH.seqNum);
-				} else{ 
+				    compute_new_checksum();
+				    update_packet_checksum();
+				} else{
 				    log_msg("[LOG]: > [{}] Bad message, rejecting. Message contents: [SND:{},ID:{},SSQN:{},RCV:{}]",
 					{sessionID, hdr.sessionH.senderRole, hdr.sessionH.messageID, hdr.sessionH.seqNum, hdr.sessionH.receiverRole});
 				    mark_to_drop(standard_metadata);
@@ -330,9 +352,9 @@ control Process(inout headers hdr,
 			// Low SSQN, possible retransmit: forward but do not update state
 			} else if (hdr.sessionH.seqNum <= ssqn) {
 			    log_msg("[LOG]: > [{}] Low SSQN, possible retransmit ({} <= {}); forwarding. Message contents: [SND:{},ID:{},SSQN:{},RCV:{}]",
-				{sessionID, hdr.sessionH.seqNum, ssqn,
-				    hdr.sessionH.senderRole, hdr.sessionH.messageID, hdr.sessionH.seqNum, hdr.sessionH.receiverRole});
-			    
+				{sessionID, hdr.sessionH.seqNum, ssqn, hdr.sessionH.senderRole, hdr.sessionH.messageID, hdr.sessionH.seqNum, hdr.sessionH.receiverRole});
+			    update_packet_checksum();
+
 			// Unexpected receiver, possibly out-of-order: reject but do not drop session
 			} else {
 			    log_msg("[LOG]: > [{}] Out-of-order message, rejecting. Message contents: [SND:{},ID:{},SSQN:{},RCV:{}]",
@@ -362,6 +384,9 @@ control Process(inout headers hdr,
 	    } else {
 		mark_to_drop(standard_metadata);
 	    }
+	}
+	if (hdr.ipv4.ttl <= 0) {
+	    mark_to_drop(standard_metadata);
 	}
     }
 }
@@ -397,6 +422,40 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
               hdr.ipv4.dstAddr },
             hdr.ipv4.hdrChecksum,
             HashAlgorithm.csum16);
+
+	update_checksum_with_payload(hdr.tcp.isValid() && hdr.sessionH.isValid(),
+	    { hdr.ipv4.srcAddr,
+                hdr.ipv4.dstAddr,
+                8w0,
+                hdr.ipv4.protocol,
+                meta.tcpLength,
+                hdr.tcp.srcPort,
+                hdr.tcp.dstPort,
+                hdr.tcp.seqNum,
+                hdr.tcp.ackNum,
+                hdr.tcp.dataOffset,
+                hdr.tcp.reserved,
+		hdr.tcp.CWR,
+                hdr.tcp.ECE,
+                hdr.tcp.URG,
+                hdr.tcp.ACK,
+                hdr.tcp.PSH,
+                hdr.tcp.RST,
+                hdr.tcp.SYN,
+                hdr.tcp.FIN,
+                hdr.tcp.window,
+                16w0,
+                hdr.tcp.urgentPointer,
+		hdr.tcpOptions.options,
+		hdr.sessionH.msgLength,
+		hdr.sessionH.sessionID,
+		hdr.sessionH.messageID,
+		hdr.sessionH.senderRole,
+		hdr.sessionH.receiverRole,
+		hdr.sessionH.checksum,
+		hdr.sessionH.seqNum
+            },
+            hdr.tcp.checksum, HashAlgorithm.csum16);
     }
 }
 

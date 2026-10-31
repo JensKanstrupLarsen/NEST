@@ -1,0 +1,4 @@
+h1 coordinator.py 1
+h2 gameserver.py 0 2 4 3
+h3 player1.py 0
+h4 player2.py 0

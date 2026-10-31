@@ -16,6 +16,18 @@ def get_packet_data(filename, test_nums):
     all_lines.sort()
     return all_lines
 
+def get_tamper_packet_data(filename, testtype, test_nums):
+    all_lines = []
+    for i in range(1,test_nums+1):
+        with open(filename+str(i)+"_"+testtype+".txt", "r") as f:
+            reader = csv.reader(f, delimiter=" ")
+            lines = 0
+            for row in reader:
+                lines += 1
+            all_lines.append(lines)
+    all_lines.sort()
+    return all_lines
+
 def get_timestamp_data(filename):
     with open(filename, "r") as f:
         reader = csv.reader(f, delimiter=" ")
@@ -32,11 +44,68 @@ def get_timestamp_data(filename):
         eql_timestamps = [t-min_timestamp for t in unq_timestamps]
         return (eql_timestamps, counts_sum)
 
+def get_tamper_data(filename, testtype, test_nums):
+    sesh_nocheck_good = get_tamper_packet_data(".testdata/" + filename + "_tcptamper_nocheck_good_", testtype, test_nums)
+    sesh_nocheck_bad = get_tamper_packet_data(".testdata/" + filename + "_tcptamper_nocheck_bad_", testtype, test_nums)
+    sesh_check_good = get_tamper_packet_data(".testdata/" + filename + "_tcptamper_check_good_", testtype, test_nums)
+    sesh_check_bad = get_tamper_packet_data(".testdata/" + filename + "_tcptamper_check_bad_", testtype, test_nums)
+    return (sesh_nocheck_good, sesh_check_good, sesh_nocheck_bad, sesh_check_bad)
+
 def get_network_data(filename, testtype, test_nums):
     pkts_udp =  get_packet_data(".testdata/" + filename + "_udp_" + testtype, test_nums)
     pkts_tcp =   get_packet_data(".testdata/" + filename + "_tcp_" + testtype, test_nums)
     pkts_tcploss = get_packet_data(".testdata/" + filename + "_tcploss_" + testtype, test_nums)
     return (pkts_udp, pkts_tcp, pkts_tcploss)
+
+def make_tamper_barplot(filename, save, test_nums):
+    test_setup_variants = ("Default", "W. checksum", "W. tampering", "W. tampering\n and checksum")
+    total_sesh = get_tamper_data(filename, "total", test_nums)
+    crash_sesh = get_tamper_data(filename, "crash", test_nums)
+    timeout_sesh = get_tamper_data(filename, "timeout", test_nums)
+    sesh_data = {
+        'Total sessions': total_sesh,
+        'Crashed sessions': crash_sesh,
+        'Timed out sessions': timeout_sesh
+    }
+    testtype_colors = {
+        'Total sessions': "#0C7BDC",
+        'Crashed sessions': "#FFC20A",
+        'Timed out sessions': "#15B01A"
+    }
+    x = np.arange(len(test_setup_variants))  # the label locations
+    width = 0.25  # the width of the bars
+    multiplier = 0
+
+    fig, ax = plt.subplots(layout='constrained')
+    max_sesh = 0
+
+    for testtype, sesh in sesh_data.items():
+        print(sesh)
+        offset = width * multiplier
+        median = [s[round(len(s)/2-1)] for s in sesh]
+        print(median)
+        rects = ax.bar(
+            x + offset,
+            median,
+            width,
+            color=testtype_colors[testtype],
+            label=testtype)
+        ax.bar_label(rects, padding=3)
+        multiplier += 1
+        max_sesh = max(max_sesh, max([max(s) for s in sesh]))
+
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel('Sessions')
+    ax.set_xticks(x + width, test_setup_variants)
+    ax.legend(loc='upper left', ncols=2)
+    ax.set_ylim(0, max_sesh * 1.25)
+    #plt.title(filename)
+
+    if save:
+        plt.savefig("plots/"+filename+"_barplot.pdf")
+        plt.clf()
+    else:
+        plt.show()
 
 def make_barplot(filename, save, test_nums):
     network_types = ("Reliable UDP", "Reliable TCP", "Unreliable TCP")
@@ -153,13 +222,15 @@ def make_all_timeseries(filename, save, test_num):
     make_single_timeseries(filename, "tcploss", filename + ", unreliable TCP", save, test_num)
 
 if len(sys.argv) != 4 and len(sys.argv) !=5:
-    print("Usage: parser.py <testcase> <barplot | timeseries> <# of tests> [--save]")
+    print("Usage: parser.py <testcase> <barplot | timeseries | checksum_barplot> <# of tests> [--save]")
     sys.exit(1)
 
 if (sys.argv[2] == "barplot"):
     make_barplot(sys.argv[1], len(sys.argv) == 5 and sys.argv[4] == "--save", test_nums=int(sys.argv[3]))
 elif (sys.argv[2] == "timeseries"):
     make_all_timeseries(sys.argv[1], len(sys.argv) == 5 and sys.argv[4] == "--save", test_num=int(sys.argv[3]))
+elif (sys.argv[2] == "checksum_barplot"):
+    make_tamper_barplot(sys.argv[1], len(sys.argv) == 5 and sys.argv[4] == "--save", test_nums=int(sys.argv[3]))
 else:
     print("Unknown plot type.")
     sys.exit(1)
